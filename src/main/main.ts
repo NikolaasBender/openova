@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import os from 'os';
 import * as pty from 'node-pty';
+import { parseDevContainer, startDevContainer } from './devContainer';
 
 // Fix for Linux SUID sandbox error
 app.commandLine.appendSwitch('no-sandbox');
@@ -48,6 +49,32 @@ app.whenReady().then(() => {
         return filePaths[0];
     });
 
+    ipcMain.handle('devcontainer:check', async (_, projectPath) => {
+        return parseDevContainer(projectPath);
+    });
+
+    // Dev Container State
+    const projectContainers = new Map<string, string>();
+
+    ipcMain.handle('devcontainer:up', async (_, projectPath, config) => {
+        const id = await startDevContainer(projectPath, config);
+        projectContainers.set(projectPath, id);
+        return id;
+    });
+
+    ipcMain.handle('extensions:search', async (_, query) => {
+        if (!query) return [];
+        try {
+            const response = await fetch(`https://open-vsx.org/api/-/search?query=${encodeURIComponent(query)}&size=20&sortBy=relevance&sortOrder=desc`);
+            if (!response.ok) throw new Error(response.statusText);
+            const data = await response.json();
+            return data.extensions || [];
+        } catch (error) {
+            console.error('Extension search failed:', error);
+            return [];
+        }
+    });
+
     ipcMain.handle('fs:readDirectory', async (_, dirPath) => {
         try {
             const files = await fs.readdir(dirPath, { withFileTypes: true });
@@ -85,14 +112,28 @@ app.whenReady().then(() => {
     const ptyProcesses = new Map<number, any>();
 
     ipcMain.handle('terminal:create', (event, cwd?: string) => {
-        const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+        let shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+        let args: string[] = [];
+        let ptyCwd = cwd || os.homedir();
 
-        // Use provided cwd or default to home
-        const ptyProcess = pty.spawn(shell, [], {
+        // Check if we should spawn in a container
+        if (cwd) {
+            for (const [projectPath, containerId] of projectContainers) {
+                if (cwd.startsWith(projectPath)) {
+                    console.log(`Spawning terminal in container ${containerId} for ${cwd}`);
+                    shell = 'docker';
+                    args = ['exec', '-it', containerId, '/bin/sh'];
+                    ptyCwd = '/workspace'; // Force workspace dir
+                    break;
+                }
+            }
+        }
+
+        const ptyProcess = pty.spawn(shell, args, {
             name: 'xterm-color',
             cols: 80,
             rows: 30,
-            cwd: cwd || os.homedir(),
+            cwd: ptyCwd,
             env: process.env as any
         });
 

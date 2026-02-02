@@ -15,7 +15,7 @@ interface SidebarProps {
     onRootPathChange: (path: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onFileSelect, width = 250, rootPath, onRootPathChange }) => {
+const ExplorerPane: React.FC<SidebarProps> = ({ onFileSelect, width = 250, rootPath, onRootPathChange }) => {
     // const [rootPath, setRootPath] = useState<string | null>(null); // Lifted
     const [files, setFiles] = useState<FileNode[]>([]);
 
@@ -130,4 +130,4 @@ const FileTreeNode: React.FC<{ node: FileNode; onFileSelect: (p: string) => void
     );
 };
 
-export default Sidebar;
+export default ExplorerPane;

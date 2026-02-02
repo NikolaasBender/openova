@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import Editor from './components/Editor'
-import Sidebar from './components/Sidebar'
+import ExplorerPane from './components/ExplorerPane' // Renamed from Sidebar
+import ExtensionsPane from './components/ExtensionsPane'
+import ActivityBar from './components/ActivityBar'
 import WindowControls from './components/WindowControls'
 import TerminalPane from './components/TerminalPane'
 import TabBar from './components/TabBar'
@@ -11,6 +13,23 @@ function App() {
     const [sidebarWidth, setSidebarWidth] = useState(250);
     const [isTerminalOpen, setIsTerminalOpen] = useState(true);
     const [rootPath, setRootPath] = useState<string | null>(null);
+    const [devContainerConfig, setDevContainerConfig] = useState<any | null>(null);
+
+    useEffect(() => {
+        if (rootPath) {
+            window.electronAPI.checkDevContainer(rootPath)
+                .then(config => {
+                    setDevContainerConfig(config);
+                })
+                .catch(err => console.error('Error checking dev container:', err));
+        } else {
+            setDevContainerConfig(null);
+        }
+    }, [rootPath]);
+
+    // New state for Activity Bar
+    const [activeView, setActiveView] = useState<'explorer' | 'extensions'>('explorer');
+
     const isResizing = useRef(false);
 
     const startResizing = useCallback(() => {
@@ -37,6 +56,41 @@ function App() {
             window.removeEventListener('mouseup', stopResizing);
         };
     }, [resize, stopResizing]);
+
+    // Keyboard Shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.ctrlKey || e.metaKey) {
+                switch (e.key.toLowerCase()) {
+                    case 'b':
+                        e.preventDefault();
+                        setSidebarWidth(prev => prev === 0 ? 250 : 0);
+                        break;
+                    case '`':
+                        e.preventDefault();
+                        setIsTerminalOpen(prev => !prev);
+                        break;
+                    case 'e':
+                        if (e.shiftKey) {
+                            e.preventDefault();
+                            setActiveView('explorer');
+                            setSidebarWidth(250); // Ensure visible
+                        }
+                        break;
+                    case 'x':
+                        if (e.shiftKey) {
+                            e.preventDefault();
+                            setActiveView('extensions');
+                            setSidebarWidth(250); // Ensure visible
+                        }
+                        break;
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     const handleFileSelect = async (path: string) => {
         // Check if tab already exists
@@ -110,18 +164,20 @@ function App() {
             {/* Main Content Area */}
             <div className="flex flex-1 overflow-hidden relative">
                 {/* Activity Bar */}
-                <div className="w-12 bg-vscode-activity flex flex-col items-center py-4 border-r border-[#2b2b2b] shrink-0 z-20">
-                    <div className="w-6 h-6 border-2 border-white mb-6 rounded-sm opacity-50 hover:opacity-100 cursor-pointer" title="Explorer" />
-                    <div className="w-6 h-6 border-2 border-white mb-6 rounded-sm opacity-30 cursor-pointer" title="Search" />
-                </div>
+                <ActivityBar activeView={activeView} onViewChange={setActiveView} />
 
-                {/* Sidebar */}
-                <Sidebar
-                    width={sidebarWidth}
-                    onFileSelect={handleFileSelect}
-                    rootPath={rootPath}
-                    onRootPathChange={setRootPath}
-                />
+                {/* Sidebar Pane (Dynamic based on ActivityBar) */}
+                {activeView === 'explorer' && (
+                    <ExplorerPane
+                        width={sidebarWidth}
+                        onFileSelect={handleFileSelect}
+                        rootPath={rootPath}
+                        onRootPathChange={setRootPath}
+                    />
+                )}
+                {activeView === 'extensions' && (
+                    <ExtensionsPane width={sidebarWidth} />
+                )}
 
                 {/* Resize Handle */}
                 <div
@@ -158,17 +214,38 @@ function App() {
             </div>
 
             {/* Status Bar */}
-            <div className="h-6 bg-vscode-statusbar w-full text-xs flex items-center px-2 z-30 select-none cursor-default shrink-0">
-                <span className="mr-4">main*</span>
-                <span className="mr-4">Ln 1, Col 1</span>
-                <span className="mr-4">UTF-8</span>
-                <span className="mr-4">{activeTab?.name.split('.').pop()?.toUpperCase() || 'TXT'}</span>
-                <span
-                    className="mr-4 hover:text-white cursor-pointer"
-                    onClick={() => setIsTerminalOpen(!isTerminalOpen)}
-                >
-                    Terminal
-                </span>
+            <div className="h-6 bg-vscode-statusbar w-full text-xs flex items-center px-0 z-30 select-none cursor-default shrink-0">
+                {devContainerConfig && (
+                    <div
+                        className="bg-[#16825d] text-white px-3 h-full flex items-center mr-0 cursor-pointer hover:bg-[#136c4e] transition-colors gap-2"
+                        onClick={async () => {
+                            if (rootPath && devContainerConfig) {
+                                try {
+                                    const id = await window.electronAPI.startDevContainer(rootPath, devContainerConfig);
+                                    alert(`Dev Container Started: ${id.substring(0, 12)}`);
+                                } catch (error) {
+                                    console.error(error);
+                                    alert('Failed to start container');
+                                }
+                            }
+                        }}
+                    >
+                        <span>{'>'}{'<'}</span>
+                        <span className="font-medium">Dev Container</span>
+                    </div>
+                )}
+                <div className="px-2 flex items-center">
+                    <span className="mr-4">main*</span>
+                    <span className="mr-4">Ln 1, Col 1</span>
+                    <span className="mr-4">UTF-8</span>
+                    <span className="mr-4">{activeTab?.name.split('.').pop()?.toUpperCase() || 'TXT'}</span>
+                    <span
+                        className="mr-4 hover:text-white cursor-pointer"
+                        onClick={() => setIsTerminalOpen(!isTerminalOpen)}
+                    >
+                        Terminal
+                    </span>
+                </div>
             </div>
         </div>
     )

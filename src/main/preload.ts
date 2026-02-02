@@ -18,5 +18,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         write: (pid: number, data: string) => ipcRenderer.send('terminal:write', { pid, data }),
         resize: (pid: number, cols: number, rows: number) => ipcRenderer.send('terminal:resize', { pid, cols, rows }),
         dispose: (pid: number) => ipcRenderer.send('terminal:dispose', { pid }),
-    }
+    },
+    checkDevContainer: (projectPath: string) => ipcRenderer.invoke('devcontainer:check', projectPath),
+    startDevContainer: (projectPath: string, config: any) => ipcRenderer.invoke('devcontainer:up', projectPath, config),
+    searchExtensions: (query: string) => ipcRenderer.invoke('extensions:search', query),
 });

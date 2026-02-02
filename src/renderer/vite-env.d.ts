@@ -15,5 +15,8 @@ interface Window {
             resize: (pid: number, cols: number, rows: number) => void;
             dispose: (pid: number) => void;
         };
+        checkDevContainer: (projectPath: string) => Promise<any>;
+        startDevContainer: (projectPath: string, config: any) => Promise<string>;
+        searchExtensions: (query: string) => Promise<any[]>;
     };
 }
