@@ -4,9 +4,10 @@ import Editor, { useMonaco } from '@monaco-editor/react';
 interface EditorProps {
     content: string;
     language?: string;
+    onChange?: (value: string | undefined) => void;
 }
 
-const CodeEditor: React.FC<EditorProps> = ({ content, language = 'javascript' }) => {
+const CodeEditor: React.FC<EditorProps> = ({ content, language = 'javascript', onChange }) => {
     const monaco = useMonaco();
 
     React.useEffect(() => {
@@ -24,6 +25,7 @@ const CodeEditor: React.FC<EditorProps> = ({ content, language = 'javascript' })
             language={language}
             value={content}
             theme="vs-dark"
+            onChange={onChange}
             options={{
                 minimap: { enabled: true },
                 fontSize: 14,

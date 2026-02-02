@@ -1,0 +1,69 @@
+Implementation Plan: Multiple File Tabs
+
+Goal: Allow multiple files to be open simultaneously in tabs, enabling the user to switch between them without losing context or requiring re-reading from disk constantly.
+
+1. State Management Changes (App.tsx)
+   -----------------------------------
+   Current State:
+   - activeFile: string | null
+   - fileContent: string
+
+   New State:
+   - tabs: Array<{
+       path: string;       // Unique identifier and file path
+       name: string;       // Display name (filename)
+       content: string;    // File content (cached)
+       isDirty: boolean;   // For future save tracking
+     }>
+   - activeTabPath: string | null
+
+2. UI Component: TabBar
+   --------------------
+   - Create a new component `components/TabBar.tsx` (or implement within App.tsx initially).
+   - Props:
+     - tabs: Array<Tab>
+     - activeTabPath: string
+     - onTabClick: (path: string) => void
+     - onTabClose: (path: string, e: MouseEvent) => void
+   - Styling:
+     - Flex container, horizontal scroll if many tabs.
+     - Each tab:
+       - Active style: slightly lighter background (e.g., #1e1e1e), top border accent.
+       - Inactive style: darker background (e.g., #2d2d2d).
+       - Close button 'x' visible on hover or always for active tab.
+
+3. Logic Updates
+   -------------
+   A. Opening a File (handleFileSelect):
+      - Check if file path is already in `tabs`.
+      - IF exists:
+        - Set `activeTabPath` to this path.
+      - IF NOT exists:
+        - Read file content via `window.electronAPI.readFile(path)`.
+        - Add new tab object to `tabs`.
+        - Set `activeTabPath` to this path.
+
+   B. Closing a Tab:
+      - Remove tab from `tabs` array.
+      - Handle active tab logic:
+        - If closed tab was active, determine next active tab (usually the one to the right, or left if last).
+        - If all tabs closed, reset to "Welcome" state.
+
+   C. Rendering Editor:
+      - Instead of directly using `fileContent` state, find the active tab in `tabs` and pass `activeTab.content` to the <Editor />.
+
+4. Proposed File Structure
+   -----------------------
+   src/renderer/
+   ├── components/
+   │   ├── TabBar.tsx    <-- NEW
+   │   ├── Tab.tsx       <-- NEW (Optional sub-component)
+   
+5. Step-by-Step Implementation
+   ---------------------------
+   1. Define the `Tab` interface.
+   2. Refactor `App.tsx` state to replace `activeFile`/`fileContent` with `tabs`/`activeTabPath`.
+   3. Create the `TabBar` visual component in the Main Editor Area (above the Editor).
+   4. Update `handleFileSelect` to manage the array of tabs.
+   5. Implement `closeTab` function.
+   6. Style to match VS Code (dark theme, clean borders).

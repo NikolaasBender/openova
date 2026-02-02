@@ -10,20 +10,38 @@ interface FileNode {
 
 interface SidebarProps {
     onFileSelect: (path: string) => void;
+    width?: number;
+    rootPath: string | null;
+    onRootPathChange: (path: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onFileSelect }) => {
-    const [rootPath, setRootPath] = useState<string | null>(null);
+const Sidebar: React.FC<SidebarProps> = ({ onFileSelect, width = 250, rootPath, onRootPathChange }) => {
+    // const [rootPath, setRootPath] = useState<string | null>(null); // Lifted
     const [files, setFiles] = useState<FileNode[]>([]);
 
     const handleOpenFolder = async () => {
         const path = await window.electronAPI.selectFolder();
         if (path) {
-            setRootPath(path);
+            onRootPathChange(path);
             const rootFiles = await window.electronAPI.readDirectory(path);
             setFiles(rootFiles.sort((a, b) => (Number(b.isDirectory) - Number(a.isDirectory)))); // Dirs first
         }
     };
+
+    // Effect to reload files if rootPath changes (e.g. from potential other sources, though mainly handleOpenFolder now)
+    // Actually handleOpenFolder does both set and load. Let's keep it simple.
+    // Ideally we should use useEffect to load files when rootPath changes.
+    React.useEffect(() => {
+        const loadFiles = async () => {
+            if (rootPath) {
+                const rootFiles = await window.electronAPI.readDirectory(rootPath);
+                setFiles(rootFiles.sort((a, b) => (Number(b.isDirectory) - Number(a.isDirectory))));
+            } else {
+                setFiles([]);
+            }
+        }
+        loadFiles();
+    }, [rootPath]);
 
     const toggleDirectory = async (node: FileNode, index: number) => {
         // Very simple flat list expansion for MVP or need recursive?
@@ -33,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onFileSelect }) => {
     };
 
     return (
-        <div className="w-64 bg-vscode-sidebar border-r border-[#2b2b2b] flex flex-col h-full text-[#cccccc]">
+        <div style={{ width }} className="bg-vscode-sidebar border-r border-[#2b2b2b] flex flex-col h-full text-[#cccccc] shrink-0">
             <div className="p-2 text-xs font-bold uppercase tracking-wider flex justify-between items-center">
                 <span>Explorer</span>
             </div>

@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs/promises';
+import os from 'os';
+import * as pty from 'node-pty';
 
 // Fix for Linux SUID sandbox error
 app.commandLine.appendSwitch('no-sandbox');
@@ -77,6 +79,61 @@ app.whenReady().then(() => {
     });
     ipcMain.on('window:close', () => {
         BrowserWindow.getFocusedWindow()?.close();
+    });
+
+    // Terminal Handlers
+    const ptyProcesses = new Map<number, any>();
+
+    ipcMain.handle('terminal:create', (event, cwd?: string) => {
+        const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+
+        // Use provided cwd or default to home
+        const ptyProcess = pty.spawn(shell, [], {
+            name: 'xterm-color',
+            cols: 80,
+            rows: 30,
+            cwd: cwd || os.homedir(),
+            env: process.env as any
+        });
+
+        const pid = ptyProcess.pid;
+        ptyProcesses.set(pid, ptyProcess);
+
+        // Send data to renderer
+        ptyProcess.onData((data) => {
+            // We can send to the specific sender window
+            // Payload: { pid, data }
+            event.sender.send('terminal:incoming', { pid, data });
+        });
+
+        ptyProcess.onExit(() => {
+            ptyProcesses.delete(pid);
+            event.sender.send('terminal:exit', { pid });
+        });
+
+        return pid;
+    });
+
+    ipcMain.on('terminal:write', (event, { pid, data }) => {
+        const ptyProcess = ptyProcesses.get(pid);
+        if (ptyProcess) {
+            ptyProcess.write(data);
+        }
+    });
+
+    ipcMain.on('terminal:resize', (event, { pid, cols, rows }) => {
+        const ptyProcess = ptyProcesses.get(pid);
+        if (ptyProcess) {
+            ptyProcess.resize(cols, rows);
+        }
+    });
+
+    ipcMain.on('terminal:dispose', (event, { pid }) => {
+        const ptyProcess = ptyProcesses.get(pid);
+        if (ptyProcess) {
+            ptyProcess.kill();
+            ptyProcesses.delete(pid);
+        }
     });
 
 });
