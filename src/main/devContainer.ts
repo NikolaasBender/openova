@@ -52,7 +52,8 @@ export async function parseDevContainer(projectPath: string): Promise<DevContain
     }
 }
 
-export async function startDevContainer(projectPath: string, config: DevContainerConfig): Promise<string> {
+
+export async function startDevContainer(projectPath: string, config: DevContainerConfig, options: { rebuild?: boolean } = {}): Promise<string> {
     let image = config.image;
 
     // Handle Dockerfile build if no image provided
@@ -65,7 +66,9 @@ export async function startDevContainer(projectPath: string, config: DevContaine
         console.log(`Building image: ${image} from ${dockerfilePath}`);
 
         try {
-            await execPromise(`docker build -t ${image} -f "${dockerfilePath}" "${context}"`);
+            // If rebuild is requested, add --no-cache
+            const buildArgs = options.rebuild ? '--no-cache' : '';
+            await execPromise(`docker build ${buildArgs} -t ${image} -f "${dockerfilePath}" "${context}"`);
         } catch (e: any) {
             console.error('Docker build failed:', e.stderr || e.message);
             throw new Error(`Docker build failed: ${e.stderr || e.message}`);

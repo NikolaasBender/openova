@@ -4,6 +4,7 @@ interface Window {
     electronAPI: {
         selectFolder: () => Promise<string | null>;
         readDirectory: (path: string) => Promise<Array<{ name: string; isDirectory: boolean; path: string }>>;
+        getAllFiles: (path: string) => Promise<string[]>;
         readFile: (path: string) => Promise<string>;
         minimize: () => void;
         maximize: () => void;
@@ -16,7 +17,8 @@ interface Window {
             dispose: (pid: number) => void;
         };
         checkDevContainer: (projectPath: string) => Promise<any>;
-        startDevContainer: (projectPath: string, config: any) => Promise<string>;
+        startDevContainer: (projectPath: string, config: any, options?: any) => Promise<string>;
         searchExtensions: (query: string) => Promise<any[]>;
+        log: (message: string) => void;
     };
 }

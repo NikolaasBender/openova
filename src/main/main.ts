@@ -1,14 +1,20 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs/promises';
 import os from 'os';
 import * as pty from 'node-pty';
 import { parseDevContainer, startDevContainer } from './devContainer';
+import { SettingsManager } from './settings';
 
 // Fix for Linux SUID sandbox error
 app.commandLine.appendSwitch('no-sandbox');
+// Disable GPU acceleration to prevent crashes in some environments
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-software-rasterizer');
 
 function createWindow() {
+    console.log('[Main] Creating window...');
     const win = new BrowserWindow({
         width: 1200,
         height: 800,
@@ -21,6 +27,15 @@ function createWindow() {
         backgroundColor: '#1e1e1e',
     });
 
+    win.on('ready-to-show', () => {
+        console.log('[Main] Window ready to show');
+        win.show();
+    });
+
+    win.on('closed', () => {
+        console.log('[Main] Window closed');
+    });
+
     // Load the index.html from dist
     // If dev, load localhost
     if (process.env.VITE_DEV_SERVER_URL) {
@@ -31,7 +46,9 @@ function createWindow() {
     }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+    console.log('[Main] App Ready');
+    Menu.setApplicationMenu(null); // Remove default menu (and its accelerators)
     createWindow();
 
     app.on('activate', () => {
@@ -41,6 +58,10 @@ app.whenReady().then(() => {
     });
 
     // IPC Handlers
+    ipcMain.on('app:log', (_, message) => {
+        console.log(`[Renderer] ${message}`);
+    });
+
     ipcMain.handle('dialog:openFolder', async () => {
         const { canceled, filePaths } = await dialog.showOpenDialog({
             properties: ['openDirectory'],
@@ -56,8 +77,8 @@ app.whenReady().then(() => {
     // Dev Container State
     const projectContainers = new Map<string, string>();
 
-    ipcMain.handle('devcontainer:up', async (_, projectPath, config) => {
-        const id = await startDevContainer(projectPath, config);
+    ipcMain.handle('devcontainer:up', async (_, projectPath, config, options) => {
+        const id = await startDevContainer(projectPath, config, options);
         projectContainers.set(projectPath, id);
         return id;
     });
@@ -89,8 +110,48 @@ app.whenReady().then(() => {
         }
     });
 
+    ipcMain.handle('fs:getAllFiles', async (_, dirPath) => {
+        const getAllFiles = async (dir: string): Promise<string[]> => {
+            let results: string[] = [];
+            try {
+                const list = await fs.readdir(dir, { withFileTypes: true });
+                for (const file of list) {
+                    const filePath = path.join(dir, file.name);
+                    if (file.isDirectory()) {
+                        if (file.name !== '.git' && file.name !== 'node_modules' && file.name !== 'dist' && file.name !== '.build') {
+                            const subFiles = await getAllFiles(filePath);
+                            results = results.concat(subFiles);
+                        }
+                    } else {
+                        results.push(filePath);
+                    }
+                }
+            } catch (e) {
+                console.error(`Error reading ${dir}`, e);
+            }
+            return results;
+        };
+        return getAllFiles(dirPath);
+    });
+
     ipcMain.handle('fs:readFile', async (_, filePath) => {
         return fs.readFile(filePath, 'utf-8');
+    });
+
+    // Settings Handlers
+    const settingsManager = new SettingsManager();
+    await settingsManager.load();
+
+    ipcMain.handle('settings:get', (_, key) => settingsManager.get(key));
+    ipcMain.handle('settings:set', (_, key, value) => settingsManager.set(key, value));
+    ipcMain.handle('settings:getAll', () => settingsManager.getAll());
+    ipcMain.handle('settings:getPath', () => settingsManager.getPath());
+    ipcMain.handle('settings:reset', async () => {
+        await settingsManager.reset();
+        app.quit();
+        // relaunch?
+        // app.relaunch();
+        // app.exit();
     });
 
     // Window Control Handlers
