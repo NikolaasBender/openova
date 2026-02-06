@@ -1,0 +1,65 @@
+Plan: Instant Settings Updates
+
+Goal: Ensure that changes to the `settings.json` file are immediately reflected in the application without requiring a restart, and that renderer components are notified of these changes.
+
+Architecture:
+1.  **File Watching (Main Process)**: The `SettingsManager` will watch the settings file for changes using `fs.watch`.
+2.  **Event Propagation**: When a change is detected, `SettingsManager` will reload the settings and emit an event.
+3.  **IPC Communication**: The Main process will listen for this event and send the new settings to all renderer windows via IPC (`settings:updated`).
+4.  **Renderer Update**: The `SettingsService` in the renderer will listen for the IPC message, update the in-memory settings state, and **emit a change event** to subscribed components.
+
+Detailed Steps:
+
+1.  **Modify `src/main/settings.ts`**:
+    *   Import `EventEmitter` from 'events'.
+    *   Make `SettingsManager` extend `EventEmitter`.
+    *   In `load()`, set up `fs.watch(this.settingsPath)` (if not already watching).
+    *   Handle the 'change' event from `fs.watch`. Use a debounce (e.g., 100ms) to prevent multiple reads for a single save.
+    *   On a valid change:
+        *   Re-read the file.
+        *   Update `this.settings`.
+        *   Emit a 'change' event with the new settings: `this.emit('change', this.settings)`.
+
+2.  **Modify `src/main/main.ts`**:
+    *   After instantiating `settingsManager`:
+        ```typescript
+        settingsManager.on('change', (newSettings) => {
+            BrowserWindow.getAllWindows().forEach(win => {
+                win.webContents.send('settings:updated', newSettings);
+            });
+        });
+        ```
+
+3.  **Modify `src/main/preload.ts`**:
+    *   Add the `onSettingsUpdate` method to the `electronAPI` exposure:
+        ```typescript
+        onSettingsUpdate: (callback: (settings: any) => void) => {
+            const subscription = (_: any, settings: any) => callback(settings);
+            ipcRenderer.on('settings:updated', subscription);
+            return () => ipcRenderer.removeListener('settings:updated', subscription);
+        },
+        ```
+
+4.  **Modify `src/renderer/services/SettingsService.ts`**:
+    *   Add a listener management system:
+        *   `private listeners: ((settings: any) => void)[] = [];`
+    *   In `constructor` or `loadSettings`:
+        *   Ensure we listen to `window.electronAPI.onSettingsUpdate` exactly once.
+        *   In the callback:
+             ```typescript
+             this.settings = newSettings;
+             console.log('[SettingsService] Settings updated:', this.settings);
+             this.notifyListeners();
+             ```
+    *   Add `notifyListeners()` helper:
+        *   Iterate through `this.listeners` and call each with `this.settings`.
+    *   Add public `onChange(callback: (settings: any) => void): () => void` method:
+        *   Adds callback to `this.listeners`.
+        *   Returns a function that removes the callback from `this.listeners`.
+
+5.  **Verification**:
+    *   Start the application (`npm run dev`).
+    *   Open `~/.config/OpenOva/User/settings.json`.
+    *   Modify a setting (e.g., `"debug.enabled"`).
+    *   Observe the console for `[SettingsService] Settings updated`.
+    *   (Optional) verify a UI component updates if subscribed.

@@ -6,6 +6,11 @@ interface Window {
         readDirectory: (path: string) => Promise<Array<{ name: string; isDirectory: boolean; path: string }>>;
         getAllFiles: (path: string) => Promise<string[]>;
         readFile: (path: string) => Promise<string>;
+        createFile: (path: string, content?: string) => Promise<boolean>;
+        createDirectory: (path: string) => Promise<boolean>;
+        watch: (path: string) => Promise<void>;
+        unwatch: (path: string) => Promise<void>;
+        onFileChange: (callback: (data: { event: string; path: string }) => void) => () => void;
         minimize: () => void;
         maximize: () => void;
         close: () => void;
@@ -20,5 +25,8 @@ interface Window {
         startDevContainer: (projectPath: string, config: any, options?: any) => Promise<string>;
         searchExtensions: (query: string) => Promise<any[]>;
         log: (message: string) => void;
+        invoke: (channel: string, ...args: any[]) => Promise<any>;
+        onSettingsUpdate: (callback: (settings: any) => void) => () => void;
+        platform: string;
     };
 }

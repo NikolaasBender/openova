@@ -52,6 +52,7 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/chokidar": "^1.7.5",
     "@types/jest": "^30.0.0",
     "@types/react": "^19.2.10",
     "@types/react-dom": "^19.2.3",
@@ -71,6 +72,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "chokidar": "^5.0.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

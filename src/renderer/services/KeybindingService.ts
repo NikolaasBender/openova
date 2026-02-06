@@ -93,11 +93,7 @@ export class KeybindingService {
             window.dispatchEvent(new CustomEvent('debug:key', { detail: debugData }));
         }
 
-        const msg = `[KeybindingService] KeyDown: code=${e.code}, key=${e.key}, ctrl=${e.ctrlKey}, meta=${e.metaKey}, shift=${e.shiftKey}, alt=${e.altKey}`;
-        console.log(msg);
-        if (window.electronAPI && window.electronAPI.log) {
-            window.electronAPI.log(msg);
-        }
+
 
 
         // Iterate bindings and check for match
@@ -106,7 +102,7 @@ export class KeybindingService {
 
         for (const binding of this.bindings.values()) {
             if (this.matches(e, binding.accelerator)) {
-                console.log(`[KeybindingService] Match found for ${binding.id}`);
+
                 // Prevent default if matched? Usually yes for app shortcuts.
                 // We'll let the handler decide if it wants to prevent default, 
                 // OR we presume that if it matches a registered shortcut, we catch it.

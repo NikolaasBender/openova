@@ -5,10 +5,31 @@ import os from 'os';
 import * as pty from 'node-pty';
 import { parseDevContainer, startDevContainer } from './devContainer';
 import { SettingsManager } from './settings';
+import chokidar, { FSWatcher } from 'chokidar';
 
 // Fix for Linux SUID sandbox error
-app.commandLine.appendSwitch('no-sandbox');
-// Disable GPU acceleration to prevent crashes in some environments
+// Helper for file logging
+function logToFile(msg: string) {
+    const logPath = '/tmp/openova-debug.log';
+    const timestamp = new Date().toISOString();
+    const logLine = `[${timestamp}] ${msg}\n`;
+    // Use sync write to ensure it hits disk immediately
+    try {
+        // dynamic require fs if needed or just use the imported fs (it is fs/promises)
+        // We need sync for immediate debugging safety, but promises is imported.
+        // Let's use standard console for now but also attempt to append to file using fs/promises (might miss crash logs)
+        // actually let's just use require('fs') for sync
+        require('fs').appendFileSync(logPath, logLine);
+    } catch (e) {
+        console.error('Failed to log to file:', e);
+    }
+    console.error(msg); // Keep console log too
+}
+
+logToFile('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+logToFile('!!! MAINJS STARTUP CHECKPOINT - IF YOU SEE THIS, CODE IS RUNNING !!!');
+logToFile('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-software-rasterizer');
@@ -38,8 +59,9 @@ function createWindow() {
 
     // Load the index.html from dist
     // If dev, load localhost
-    if (process.env.VITE_DEV_SERVER_URL) {
-        win.loadURL(process.env.VITE_DEV_SERVER_URL);
+    const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+    if (devUrl) {
+        win.loadURL(devUrl);
         win.webContents.openDevTools();
     } else {
         win.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -59,7 +81,7 @@ app.whenReady().then(async () => {
 
     // IPC Handlers
     ipcMain.on('app:log', (_, message) => {
-        console.log(`[Renderer] ${message}`);
+        logToFile(`[Renderer] ${message}`);
     });
 
     ipcMain.handle('dialog:openFolder', async () => {
@@ -138,9 +160,88 @@ app.whenReady().then(async () => {
         return fs.readFile(filePath, 'utf-8');
     });
 
+    ipcMain.handle('fs:createFile', async (_, filePath, content = '') => {
+        try {
+            await fs.writeFile(filePath, content);
+            return true;
+        } catch (error) {
+            console.error('Error creating file:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('fs:createDirectory', async (_, dirPath) => {
+        try {
+            await fs.mkdir(dirPath, { recursive: true });
+            return true;
+        } catch (error) {
+            console.error('Error creating directory:', error);
+            throw error;
+        }
+    });
+
+    // File Watching
+    const watchers = new Map<string, FSWatcher>();
+
+    ipcMain.handle('fs:watch', (event, targetPath) => {
+        logToFile(`[CHECKPOINT 1] Request to watch path: '${targetPath}'`);
+
+        // Always close existing watcher to ensure we have the fresh sender
+        const existingWatcher = watchers.get(targetPath);
+        if (existingWatcher) {
+            logToFile(`[CHECKPOINT 1.1] Closing existing watcher for: '${targetPath}'`);
+            existingWatcher.close();
+            watchers.delete(targetPath);
+        }
+
+        logToFile(`[CHECKPOINT 1.2] Creating new chokidar watcher for: '${targetPath}'`);
+        const watcher = chokidar.watch(targetPath, {
+            ignoreInitial: true,
+            awaitWriteFinish: {
+                stabilityThreshold: 100,
+                pollInterval: 100
+            }
+        });
+
+        watcher.on('all', (eventName, path) => {
+            logToFile(`[CHECKPOINT 2] Chokidar event '${eventName}' on: '${path}'`);
+            try {
+                // Broadcast to all windows to ensure we hit the active renderer(s)
+                BrowserWindow.getAllWindows().forEach(win => {
+                    if (!win.isDestroyed()) {
+                        win.webContents.send('fs:changed', { event: eventName, path });
+                    }
+                });
+            } catch (err) {
+                logToFile(`[CHECKPOINT 3-ERROR] Failed to send fs:changed: ${err}`);
+            }
+        });
+
+        watcher.on('error', (error) => {
+            logToFile(`[CHECKPOINT 2-ERROR] Chokidar error: ${error}`);
+        });
+
+        watchers.set(targetPath, watcher);
+        logToFile(`[CHECKPOINT 1.3] Watcher set up successfully for: '${targetPath}'`);
+    });
+
+    ipcMain.handle('fs:unwatch', (_, targetPath) => {
+        const watcher = watchers.get(targetPath);
+        if (watcher) {
+            watcher.close();
+            watchers.delete(targetPath);
+        }
+    });
+
     // Settings Handlers
     const settingsManager = new SettingsManager();
     await settingsManager.load();
+
+    settingsManager.on('change', (newSettings) => {
+        BrowserWindow.getAllWindows().forEach(win => {
+            win.webContents.send('settings:updated', newSettings);
+        });
+    });
 
     ipcMain.handle('settings:get', (_, key) => settingsManager.get(key));
     ipcMain.handle('settings:set', (_, key, value) => settingsManager.set(key, value));

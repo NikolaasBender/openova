@@ -22,6 +22,7 @@ function App() {
     const [rootPath, setRootPath] = useState<string | null>(null);
     const [isElectron, setIsElectron] = useState(false);
     const [isDebug, setIsDebug] = useState(false);
+    const [activeView, setActiveView] = useState<'explorer' | 'extensions'>('explorer');
 
     // Palette State
     const [isPaletteOpen, setIsPaletteOpen] = useState(false);
@@ -34,6 +35,9 @@ function App() {
         setIsElectron(isElec);
         if (isElec) {
             window.electronAPI.log('App mounted successfully');
+            if (activeView && rootPath) {
+                window.electronAPI.log(`[App] Initial State - ActiveView: ${activeView}, RootPath: ${rootPath}`);
+            }
         } else {
             console.error('electronAPI not available - Running in Browser?');
         }
@@ -42,7 +46,7 @@ function App() {
         setTimeout(() => {
             setIsDebug(SettingsService.getInstance().isDebugMode());
         }, 500); // Wait for settings to load
-    }, []);
+    }, [activeView, rootPath]);
 
     // ... (existing devContainer code)
     const [devContainerConfig, setDevContainerConfig] = useState<any | null>(null);
@@ -65,7 +69,7 @@ function App() {
     }, [rootPath]);
 
     // ... (existing Activity Bar state)
-    const [activeView, setActiveView] = useState<'explorer' | 'extensions'>('explorer');
+
     const isResizing = useRef(false);
     const startResizing = useCallback(() => { isResizing.current = true; document.body.style.cursor = 'col-resize'; }, []);
     const stopResizing = useCallback(() => { isResizing.current = false; document.body.style.cursor = 'default'; }, []);
@@ -244,6 +248,10 @@ function App() {
         }
     };
 
+    if (window.electronAPI && window.electronAPI.log) {
+        window.electronAPI.log(`[App] Render. ActiveView: ${activeView}, RootPath: ${rootPath}, SidebarWidth: ${sidebarWidth}`);
+    }
+
     return (
         <div className="flex flex-col h-screen w-screen bg-vscode-bg text-white overflow-hidden relative">
             <Palette
@@ -261,41 +269,42 @@ function App() {
                 }}
             />
 
-            <NotificationToast
+            < NotificationToast
                 isVisible={showDevContainerToast}
                 title="Dev Container Detected"
                 message="This folder contains a Dev Container configuration. Do you want to reopen it in a container?"
                 onClose={() => setShowDevContainerToast(false)}
-                actions={[
-                    {
-                        label: 'Reopen in Container',
-                        handler: () => handleStartContainer(false),
-                        variant: 'primary'
-                    },
-                    {
-                        label: 'Rebuild and Reopen',
-                        handler: () => handleStartContainer(true),
-                        variant: 'secondary'
-                    },
-                    {
-                        label: 'Connect to Container',
-                        handler: () => {
-                            // Logic to just open terminal if known running, for now just start/attach
-                            // In real VS Code this attaches to an existing container.
-                            // Here startDevContainer is idempotent-ish if we handle checking if running...
-                            // Actually startDevContainer tries to run a new one. 
-                            // For MVP 'Connect' can just be 'Open Terminal' if we track running state, 
-                            // or attempts to start (which will be a duplicate if we don't handle it).
-                            // Let's assume for now it tries to start (Open). 
-                            handleStartContainer(false);
+                actions={
+                    [
+                        {
+                            label: 'Reopen in Container',
+                            handler: () => handleStartContainer(false),
+                            variant: 'primary'
                         },
-                        variant: 'secondary'
-                    }
-                ]}
+                        {
+                            label: 'Rebuild and Reopen',
+                            handler: () => handleStartContainer(true),
+                            variant: 'secondary'
+                        },
+                        {
+                            label: 'Connect to Container',
+                            handler: () => {
+                                // Logic to just open terminal if known running, for now just start/attach
+                                // In real VS Code this attaches to an existing container.
+                                // Here startDevContainer is idempotent-ish if we handle checking if running...
+                                // Actually startDevContainer tries to run a new one. 
+                                // For MVP 'Connect' can just be 'Open Terminal' if we track running state, 
+                                // or attempts to start (which will be a duplicate if we don't handle it).
+                                // Let's assume for now it tries to start (Open). 
+                                handleStartContainer(false);
+                            },
+                            variant: 'secondary'
+                        }
+                    ]}
             />
 
             {/* Title Bar */}
-            <div className="h-8 bg-[#3c3c3c] flex items-center justify-between titlebar-drag-region w-full border-b border-[#2b2b2b] select-none shrink-0 pr-0">
+            < div className="h-8 bg-[#3c3c3c] flex items-center justify-between titlebar-drag-region w-full border-b border-[#2b2b2b] select-none shrink-0 pr-0" >
                 <div className="flex items-center pl-3">
                     {/* Replaced Icon/Text with Menu Bar */}
                     <div className="mr-4 text-xs text-[#cccccc] font-bold hidden sm:block">OpenOva</div>
@@ -304,7 +313,7 @@ function App() {
                     </div>
                 </div>
                 <WindowControls />
-            </div>
+            </div >
 
             <DebugOverlay />
 
@@ -314,14 +323,14 @@ function App() {
                 <ActivityBar activeView={activeView} onViewChange={setActiveView} />
 
                 {/* Sidebar Pane */}
-                {activeView === 'explorer' && (
-                    <ExplorerPane
-                        width={sidebarWidth}
-                        onFileSelect={handleFileSelect}
-                        rootPath={rootPath}
-                        onRootPathChange={setRootPath}
-                    />
-                )}
+                {/* {activeView === 'explorer' && ( */}
+                <ExplorerPane
+                    width={sidebarWidth}
+                    onFileSelect={handleFileSelect}
+                    rootPath={rootPath}
+                    onRootPathChange={setRootPath}
+                />
+                {/* )} */}
                 {activeView === 'extensions' && (<ExtensionsPane width={sidebarWidth} />)}
 
                 {/* Resize Handle */}
@@ -387,8 +396,9 @@ function App() {
                     </span>
                 </div>
             </div>
-        </div>
-    )
+        </div >
+
+    );
 }
 
 export default App
